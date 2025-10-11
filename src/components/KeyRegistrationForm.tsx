@@ -14,7 +14,6 @@ type FormData = yup.InferType<typeof schema>;
 
 interface KeyRegistrationFormProps {
   onClose: () => void;
-  onRefresh?: () => void;
 }
 
 export function KeyRegistrationForm({ onClose }: KeyRegistrationFormProps) {
@@ -43,7 +42,8 @@ export function KeyRegistrationForm({ onClose }: KeyRegistrationFormProps) {
     if (createError) {
       setError('Failed to register key. Please try again.');
     } else {
-      // Close the modal immediately - the table will update automatically
+      // Refresh the keys list to ensure we have the latest data
+      await fetchKeys();
       onClose();
     }
 
