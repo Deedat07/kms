@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { LogOut, Key, Users, Settings, FileText, BarChart3, Bell, Smartphone, Search, Package, Shield, Camera } from 'lucide-react';
+import { LogOut, Key, Users, Settings, FileText, BarChart3, Bell, Smartphone, Search, Package, Shield, Camera, Mail } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -162,6 +162,17 @@ export function Layout({
                 >
                   <Shield className="h-4 w-4 mr-1" />
                   Security
+                </button>
+                <button
+                  onClick={() => onViewChange?.('emails')}
+                  className={`flex items-center px-3 py-2 text-sm rounded-md transition duration-200 ${
+                    currentView === 'emails'
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <Mail className="h-4 w-4 mr-1" />
+                  Emails
                 </button>
               </nav>
               <span className="text-sm text-gray-500">Admin Panel</span>
