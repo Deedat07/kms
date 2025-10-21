@@ -17,26 +17,21 @@ interface EmailRequest {
 }
 
 Deno.serve(async (req: Request) => {
+  // ✅ Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { to, subject, body, templateId, variables }: EmailRequest = await req.json();
-
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      throw new Error("RESEND_API_KEY environment variable is not set");
-    }
 
+    if (!resendApiKey) throw new Error("RESEND_API_KEY not set");
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const resend = new Resend(resendApiKey);
+    const { to, subject, body, templateId, variables }: EmailRequest = await req.json();
 
     let finalSubject = subject;
     let finalBody = body;
@@ -48,9 +43,7 @@ Deno.serve(async (req: Request) => {
         .eq("id", templateId)
         .eq("is_active", true)
         .maybeSingle();
-
       if (templateError) throw templateError;
-
       if (template) {
         finalSubject = template.subject;
         finalBody = template.body;
@@ -76,8 +69,7 @@ Deno.serve(async (req: Request) => {
           .eq("user_email", recipient)
           .maybeSingle();
 
-        if (prefs && prefs.unsubscribed_at) {
-          console.log(`User ${recipient} has unsubscribed, skipping email`);
+        if (prefs?.unsubscribed_at) {
           await supabase.from("email_logs").insert({
             recipient_email: recipient,
             subject: finalSubject,
@@ -87,7 +79,7 @@ Deno.serve(async (req: Request) => {
             error_message: "User has unsubscribed",
             metadata: { variables },
           });
-          results.push({ recipient, status: "skipped", reason: "unsubscribed" });
+          results.push({ recipient, status: "skipped" });
           continue;
         }
 
@@ -98,35 +90,30 @@ Deno.serve(async (req: Request) => {
           html: finalBody,
         });
 
+        const logData = {
+          recipient_email: recipient,
+          subject: finalSubject,
+          body: finalBody,
+          template_id: templateId || null,
+          metadata: { variables },
+        };
+
         if (emailResult.error) {
-          console.error(`Failed to send email to ${recipient}:`, emailResult.error);
           await supabase.from("email_logs").insert({
-            recipient_email: recipient,
-            subject: finalSubject,
-            body: finalBody,
-            template_id: templateId || null,
+            ...logData,
             status: "failed",
             error_message: emailResult.error.message,
-            external_id: null,
-            metadata: { variables },
           });
-          results.push({ recipient, status: "failed", error: emailResult.error.message });
+          results.push({ recipient, status: "failed" });
         } else {
-          console.log(`Email sent successfully to ${recipient}`);
           await supabase.from("email_logs").insert({
-            recipient_email: recipient,
-            subject: finalSubject,
-            body: finalBody,
-            template_id: templateId || null,
+            ...logData,
             status: "sent",
-            error_message: null,
             external_id: emailResult.data?.id,
-            metadata: { variables },
           });
-          results.push({ recipient, status: "sent", emailId: emailResult.data?.id });
+          results.push({ recipient, status: "sent" });
         }
       } catch (error) {
-        console.error(`Error processing email for ${recipient}:`, error);
         await supabase.from("email_logs").insert({
           recipient_email: recipient,
           subject: finalSubject,
@@ -141,27 +128,15 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Processed ${results.length} email(s)`,
-        results,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
+      JSON.stringify({ success: true, results }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
-    console.error("Error in send-custom-email function:", error);
+    console.error("Error in send-custom-email:", error);
     return new Response(
-      JSON.stringify({
-        error: "Failed to send email",
-        details: error.message,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
