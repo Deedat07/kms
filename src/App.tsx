@@ -13,6 +13,7 @@ import { WebcamScanner } from './components/WebcamScanner';
 import { AdvancedSearch, SearchFilters } from './components/AdvancedSearch';
 import { BulkOperations } from './components/BulkOperations';
 import { SecurityDashboard } from './components/SecurityDashboard';
+import { EmailManagement } from './components/EmailManagement';
 import { Loader2 } from 'lucide-react';
 
 function App() {
@@ -52,6 +53,8 @@ function App() {
         return 'Notification Center';
       case 'security':
         return 'Security Dashboard';
+      case 'emails':
+        return 'Email Management';
       default:
         return 'Dashboard';
     }
@@ -73,6 +76,8 @@ function App() {
         return <NotificationCenter />;
       case 'security':
         return <SecurityDashboard />;
+      case 'emails':
+        return <EmailManagement />;
       default:
         return <Dashboard />;
     }

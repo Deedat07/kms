@@ -38,8 +38,11 @@ export function AdminRegistrationForm({ onSwitchToLogin }: AdminRegistrationForm
     register,
     handleSubmit,
     formState: { errors },
+    setValue,
+    clearErrors,
   } = useForm<FormData>({
     resolver: yupResolver(schema),
+    mode: 'onChange',
   });
 
   const onSubmit = async (data: FormData) => {
@@ -85,11 +88,14 @@ export function AdminRegistrationForm({ onSwitchToLogin }: AdminRegistrationForm
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
+    setValue('idCard', file);
+    clearErrors('idCard');
     setUploadError(null);
   };
 
   const handleFileRemove = () => {
     setSelectedFile(null);
+    setValue('idCard', null as any);
     setUploadError(null);
   };
 
@@ -230,7 +236,7 @@ export function AdminRegistrationForm({ onSwitchToLogin }: AdminRegistrationForm
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || uploading || !selectedFile}
           className="w-full flex justify-center items-center px-4 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
         >
           {loading || uploading ? (
