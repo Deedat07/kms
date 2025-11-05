@@ -1,3 +1,4 @@
+// src/components/MobileKeyScanner.tsx
 import React, { useState, useEffect } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useKeys } from '../hooks/useKeys';
@@ -13,6 +14,7 @@ import {
   Clock,
   X
 } from 'lucide-react';
+import { decodeBarcodeData } from '../lib/barcode';
 
 interface MobileKeyScannerProps {
   onClose: () => void;
@@ -26,7 +28,7 @@ export function MobileKeyScanner({ onClose }: MobileKeyScannerProps) {
   const [scanning, setScanning] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
-
+  const [manualInput, setManualInput] = useState<string>('');
   const { keys } = useKeys();
   const { users } = useUsers();
   const { records, createIssueRecord, returnKey } = useIssueRecords();
@@ -48,7 +50,7 @@ export function MobileKeyScanner({ onClose }: MobileKeyScannerProps) {
   const startScanning = () => {
     setScanning(true);
     setMessage('');
-    
+
     const scanner = new Html5QrcodeScanner(
       "mobile-scanner",
       {
@@ -61,7 +63,7 @@ export function MobileKeyScanner({ onClose }: MobileKeyScannerProps) {
 
     scanner.render(
       (decodedText) => {
-        scanner.clear();
+        try { scanner.clear(); } catch {}
         setScanning(false);
         handleScanResult(decodedText);
       },
@@ -71,20 +73,102 @@ export function MobileKeyScanner({ onClose }: MobileKeyScannerProps) {
     );
   };
 
-  const handleScanResult = (barcode: string) => {
-    if (scanMode === 'user') {
-      // Find user by barcode
-      const user = users.find(u => u.qr_code === barcode);
-      if (user) {
-        setSelectedUser(user);
-        setMessage(`User ${user.name} selected successfully!`);
-        setMessageType('success');
-        setScanMode('action');
-      } else {
-        setMessage('User not found with this barcode. Please try again.');
-        setMessageType('error');
+  // Try atob safely (browser). If running in Node (backfill scripts), fallback Buffer.
+  const tryAtob = (val: string) => {
+    try {
+      if (typeof atob === 'function') return atob(val);
+      return Buffer.from(val, 'base64').toString('utf-8');
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const normalize = (s?: string) => s?.toString().trim() ?? '';
+
+  const handleScanResult = (scanned: string) => {
+    const barcode = normalize(scanned);
+    if (!barcode) {
+      setMessage('Empty scan result.');
+      setMessageType('error');
+      return;
+    }
+
+    // 1) Exact match on users.qr_code
+    const byExact = users.find(u => u.qr_code === barcode);
+    if (byExact) {
+      setSelectedUser(byExact);
+      setMessage(`User ${byExact.name} selected successfully!`);
+      setMessageType('success');
+      setScanMode('action');
+      return;
+    }
+
+    // 2) Try parse as JSON/base64 JSON (legacy encoded QR)
+    const decodedObj = decodeBarcodeData(barcode);
+    if (decodedObj) {
+      const possibleId = decodedObj.user_id || decodedObj.userId || decodedObj.id || decodedObj.code;
+      if (possibleId) {
+        const byId = users.find(u => u.id === possibleId || u.user_id === possibleId || u.qr_code === possibleId);
+        if (byId) {
+          setSelectedUser(byId);
+          setMessage(`User ${byId.name} selected successfully!`);
+          setMessageType('success');
+          setScanMode('action');
+          return;
+        }
       }
     }
+
+    // 3) Try base64 -> plain text match
+    const atobText = tryAtob(barcode);
+    if (atobText) {
+      const byAtobExact = users.find(u => u.qr_code === atobText || u.user_id === atobText || u.id === atobText);
+      if (byAtobExact) {
+        setSelectedUser(byAtobExact);
+        setMessage(`User ${byAtobExact.name} selected successfully!`);
+        setMessageType('success');
+        setScanMode('action');
+        return;
+      }
+    }
+
+    // 4) Try KMS pattern match (e.g., KMS-XXXX) inside scanned text
+    const kmsMatch = (barcode.match(/KMS[-\w]+/i) || (atobText && atobText.match(/KMS[-\w]+/i)));
+    if (kmsMatch && kmsMatch[0]) {
+      const code = kmsMatch[0];
+      const byKms = users.find(u => (u.qr_code && u.qr_code.includes(code)) || u.user_id === code || u.id === code);
+      if (byKms) {
+        setSelectedUser(byKms);
+        setMessage(`User ${byKms.name} selected successfully!`);
+        setMessageType('success');
+        setScanMode('action');
+        return;
+      }
+    }
+
+    // 5) Match against user_id field
+    const byUserId = users.find(u => u.user_id === barcode || u.user_id === atobText);
+    if (byUserId) {
+      setSelectedUser(byUserId);
+      setMessage(`User ${byUserId.name} selected successfully!`);
+      setMessageType('success');
+      setScanMode('action');
+      return;
+    }
+
+    // 6) Not found: fallback to manual entry
+    setMessage('User not found for scanned code. Try manual lookup or re-scan.');
+    setMessageType('error');
+  };
+
+  const handleManualLookup = () => {
+    const input = manualInput.trim();
+    if (!input) {
+      setMessage('Please enter a code or user ID.');
+      setMessageType('error');
+      return;
+    }
+    handleScanResult(input);
   };
 
   const handleQuickIssue = async (keyId: string) => {
@@ -196,7 +280,7 @@ export function MobileKeyScanner({ onClose }: MobileKeyScannerProps) {
                 <User className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                 <h4 className="text-lg font-medium text-gray-900 mb-2">Scan User Barcode</h4>
                 <p className="text-sm text-gray-600">
-                  Position the user's barcode within the scanning area
+                  Position the user's barcode within the scanning area or enter code manually
                 </p>
               </div>
 
@@ -214,7 +298,6 @@ export function MobileKeyScanner({ onClose }: MobileKeyScannerProps) {
                   <button
                     onClick={() => {
                       setScanning(false);
-                      // Clear scanner if it exists
                       const scannerElement = document.getElementById('mobile-scanner');
                       if (scannerElement) {
                         scannerElement.innerHTML = '';
@@ -226,6 +309,25 @@ export function MobileKeyScanner({ onClose }: MobileKeyScannerProps) {
                   </button>
                 </div>
               )}
+
+              {/* Manual entry fallback */}
+              <div className="mt-4">
+                <div className="flex gap-2">
+                  <input
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    placeholder="Enter user code or ID"
+                    className="flex-1 px-3 py-2 border rounded-lg"
+                  />
+                  <button
+                    onClick={handleManualLookup}
+                    className="px-4 py-2 bg-gray-100 border rounded-lg"
+                  >
+                    Lookup
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">If scanning fails, try manual lookup.</p>
+              </div>
             </div>
           )}
 

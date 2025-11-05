@@ -353,7 +353,6 @@ export function UserManagement({ searchFilters }: UserManagementProps) {
           userName={selectedQRUser.name}
           userType={selectedQRUser.role || 'student'}
           userId={selectedQRUser.id}
-          userId={selectedQRUser.id}
           onClose={() => setSelectedQRUser(null)}
         />
       )}
